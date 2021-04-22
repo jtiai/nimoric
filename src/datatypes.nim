@@ -36,8 +36,8 @@ type
 
         bus*: BusRef
 
-        addr_abs*: uint16  # Absolute address fetched
-        addr_rel*: uint16  # Relative address fetched
+        addrAbs*: uint16  # Absolute address fetched
+        addrRel*: uint16  # Relative address fetched
         fetched*: uint8  # Input value for ALU
         opcode*: uint8  # Instruction byte
         cycles*: int  # Cycles remaining
@@ -52,3 +52,4 @@ type
         mode*: proc(cpu: CPURef): uint8    # addressing mode
 
     InstructionArray* = array[256, Instruction]
+
