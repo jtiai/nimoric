@@ -1,29 +1,25 @@
+import strformat
 import datatypes
-import strutils
-import parseutils
+import device
 
-proc newMemory*(s: uint16, e: uint16, ro: bool = false): ref Memory =
-    result = new Memory
-    result.startAddr = s
-    result.endAddr = e
-    result.data = newSeq[uint8](e - s + 1)
-    result.readOnly = ro
+type
+  Memory = ref object of Device
+    mem: seq[uint8]
 
-proc `[]`*(m: MemoryRef, a: uint16): uint8 =
-    m.data[a - m.startAddr]
+proc newMemory*(s: uint16, e: uint16): Memory =
+  result = new Memory
+  result.memoryMapped = true
+  result.startAddress = s
+  result.endAddress = e
+  result.mem = newSeq[uint8](e.uint32 - s.uint32 + 1'u32)
 
-proc `[]=`*(m: MemoryRef, a: uint16, v: uint8) =
-    m.data[a - m.startAddr] = v
+method read*(dev: Memory, memAddr: uint16): uint8 =
+  dev.mem[memAddr - dev.startAddress]
 
-# Accept hex string, space separated values
-proc `[]=`*(m: MemoryRef, a: uint16, v: string) =
-    var memAddr = a - m.startAddr
-    var tmp: uint8
+method write*(dev: Memory, memAddr: uint16, val: uint8) =
+  try:
+    dev.mem[memAddr - dev.startAddress] = val
+  except IndexDefect:
+    echo fmt"Trying to write {val:>02x} to address {memAddr:>04x}"
 
-    for hex in split(v):
-        discard parseHex(hex, tmp)
-        m[memAddr] = tmp
-        inc memAddr
 
-proc debug*(x: ref Memory): string =
-    toHex(x.startAddr) & " - " & toHex(x.endAddr)

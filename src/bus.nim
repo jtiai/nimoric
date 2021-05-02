@@ -1,23 +1,46 @@
+# Bus is heart of Oric emulation.
+#
+# Bus handles device IO, memory IO and timing.
+
+import parseutils
 import sequtils
+import streams
+import strutils
 import datatypes
+import device
 import memory
+import ula
 
-proc connectMemory*(bus: BusRef, mem: MemoryRef) = 
-    bus.mem.add(mem)
+func newBus*(): Bus =
+  result = new Bus
+  result.devices = newSeq[Device]()
 
-proc firstMem(bus: BusRef, memaddr: uint16): MemoryRef = 
-    bus.mem.filter(proc(x: MemoryRef): bool = memaddr in x.startAddr .. x.endAddr)[0]
+func addDevice*(bus: Bus, dev: Device) =
+  bus.devices.add(dev)
+  dev.bus = bus
 
-proc write*(bus: BusRef, memaddr: uint16, val: uint8) =
-    let mem = bus.firstMem(memaddr)
-    mem[memaddr] = val
+proc read*(bus: Bus, memAddr: uint16): uint8 =
+  for dev in bus.devices:
+    if dev.memoryMapped and (memAddr in dev.startAddress .. dev.endAddress):
+      result = dev.read(memAddr)
 
-proc read*(bus: BusRef, memaddr: uint16): uint8 =
-    let mem = bus.firstMem(memaddr)
-    result = mem[memaddr]
+proc write*(bus: Bus, memAddr: uint16, val: uint8) =
+  for dev in bus.devices:
+    if dev.memoryMapped and (memAddr in dev.startAddress .. dev.endAddress):
+      dev.write(memAddr, val)
 
-proc load*(bus: BusRef, memaddr: uint16, fname: string) =
-    let mem = bus.firstMem(memaddr)
-    let f = open(fname)
-    let fsize = f.getFileSize()
-    discard f.readBytes(mem.data, memaddr - mem.startAddr, fsize)
+proc loadFile*(bus: Bus, memAddr: uint16, fname: string) =
+  # NOTE: Can actually owerflow.
+  let s = newFileStream(fname, fmRead)
+  var a = memAddr
+  while not s.atEnd:
+    bus.write(a, s.readUInt8)
+    inc a
+
+proc loadHex*(bus: Bus, memAddr: uint16, data: string) =
+  var tmp: uint8
+  var a = memAddr
+  for hex in split(data):
+    discard parseHex(hex, tmp)
+    bus.write(a, tmp)
+    inc a

@@ -1,97 +1,93 @@
+import sdl2/sdl
 import datatypes
-import bus as systembus
 import cpu6502
+import bus
 import memory
-import fusion/btreetables
-import nimgl/imgui, nimgl/imgui/[impl_opengl, impl_glfw]
-import nimgl/[opengl, glfw]
+import ula
 
-proc main() = 
-    var
-        bus = new Bus
-        cpu = new CPU
-        ram = newMemory(0x0000'u16, 0xDFFF'u16) # 56 kB RAM
-        rom = newMemory(0xE000'u16, 0xFFFF'u16, true)  # 8 kiB ROM
+const
+  windowTitle = "Nimoric"
+  screenWidth = 640
+  screenHeight = 480
+  windowFlags = 0
+  renderFlags = sdl.RendererAccelerated or sdl.RendererPresentVsync
 
-    # Connect RAM and ROM to bus
-    bus.connectMemory(ram)
-    bus.connectMemory(rom)
+type
+  Oric = ref object
+    window*: sdl.Window
+    renderer*: sdl.Renderer
+    bus*: Bus
+    cpu*: Cpu
+    ula*: ULA
+    memory*: Memory
 
-    # Link the system
-    bus.cpu = cpu
-    cpu.bus = bus
+proc init(oric: Oric): bool =
+  if sdl.init(sdl.InitVideo) != 0:
+    echo "ERROR: Can't initialize SDL: ", sdl.getError()
+    return false
+
+  oric.window = sdl.createWindow(
+    windowTitle,
+    sdl.WindowPosUndefined,
+    sdl.WindowPosUndefined,
+    screenWidth,
+    screenHeight,
+    windowFlags
+  )
+
+  if oric.window == nil:
+    echo "ERROR: Can't create window: ", sdl.getError()
+    return false
+
+  proc.renderer = sdl.createRenderer(app.window, -1, renderFlags)
+  if oric.renderer == nil:
+    echo "ERROR: Can't create renderer: ", sdl.getError()
+
+  oric.ula = newULA()
+  oric.memory = newMemory(0x0000'u16, 0xFFFF'u16)
+  oric.bus = newBus()
+  oric.cpu = new CPU()
+
+  oric.bus.addDevice(oric.memory)
+  oric.bus.addDevice(oric.ula)
+  oric.bus.loadFile("roms/basic11b.rom")
+
+  oric.bus.cpu = oric.cpu
+  oric.cpu.bus = oric.bus
+
+  oric.cpu.reset()
+
+  echo "SDL initialized successfully"
+  return true
+
+proc exit(oric: Oric) =
+  oric.renderer.destroyRenderer()
+  oric.window.destroyWindow()
+  sdl.quit()
+  echo "SDL shutdown completed"
+
+var
+  oric = Oric(window: nil, renderer: nil)
+  done = false
+
+if init(app):
+
+  while not done:
+    discar app.renderer.setRenderDrawColor(0x00, 0x00, 0x00, 0xFF)
+
+    # Clear screen with draw color
+    if app.renderer.renderClear() != 0:
+      echo "Warning: Can't clear screen: ", sdl.getError()
+
+    # Run one frame of emulation (PAL50)
+    for tick in 0 .. 20000:
+      oric.cpu.clock()
+      if tick % 60 == 0:
+        ula.renderScanline()
+
+    # Update renderer
+    app.renderer.renderPresent()
 
 
-    ram[0x8000] = "A2 0A 8E 00 00 A2 03 8E 01 00 AC 00 00 A9 00 18 6D 01 00 88 D0 FA 8D 02 00 EA EA EA"
-    
-    # Reset vector
-    rom[0xFFFC] = 0x00
-    rom[0xFFFD] = 0x80
-
-    cpu.reset()
-    
-    let disAsm = cpu.disassemble(0x0000, 0xFFFF)
-
-    doAssert glfwInit()
-
-    glfwWindowHint(GLFWContextVersionMajor, 3)
-    glfwWindowHint(GLFWContextVersionMinor, 3)
-    glfwWindowHint(GLFWOpenglForwardCompat, GLFW_TRUE) # Used for Mac
-    glfwWindowHint(GLFWOpenglProfile, GLFW_OPENGL_CORE_PROFILE)
-    glfwWindowHint(GLFWResizable, GLFW_FALSE)
-
-    let w: GLFWWindow = glfwCreateWindow(1280, 720)
-    if w == nil:
-        quit(-1)
-
-    w.makeContextCurrent()
-
-    doAssert glInit()
-    
-    let context = igCreateContext()
-
-    doAssert igGlfwInitForOpenGL(w, true)
-    doAssert igOpenGL3Init()
-
-    igStyleColorsCherry()
-  
-    var show_demo: bool = true
-    var somefloat: float32 = 0.0f
-    var counter: int32 = 0
-    
-
-    while not w.windowShouldClose:
-        glfwPollEvents()
-
-        igOpenGL3NewFrame()
-        igGlfwNewFrame()
-        igNewFrame()
-
-        # Simple window
-        igBegin("Disassembly")
-
-        var cnt = 10
-        for l in disAsm.valuesFrom(cpu.pc):
-            if cnt == 0: break
-            dec cnt
-            igText(l)
-        igEnd()
-        # End simple window
-
-        igRender()
-
-        glClearColor(0.45f, 0.55f, 0.60f, 1.00f)
-        glClear(GL_COLOR_BUFFER_BIT)
-
-        igOpenGL3RenderDrawData(igGetDrawData())
-
-        w.swapBuffers()
-
-    igOpenGL3Shutdown()
-    igGlfwShutdown()
-    context.igDestroyContext()
-
-    w.destroyWindow()
-    glfwTerminate()
-    
-main()
+# Shutdown
+exit(app)

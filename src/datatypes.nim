@@ -1,55 +1,48 @@
 type
-    Memory* = object
-        name*: string
-        startAddr*: uint16
-        endAddr*: uint16
-        readOnly*: bool
-        data*: seq[uint8]
+  Bus* = ref object
+    cpu*: CPU
+    devices*: seq[Device]
 
-    MemoryRef* = ref Memory
+  Device* = ref object of RootObj
+    name*: string
+    bus*: Bus
+    memoryMapped*: bool
+    startAddress*: uint16
+    endAddress*: uint16
 
-    Bus* = object
-        cpu*: ref CPU
-        mem*: seq[MemoryRef]
+  CPUFlag* {.size: sizeof(cuchar).} = enum
+    C  # Carry
+    Z  # Zero
+    I  # Interrupt disable
+    D  # Decimal mode
+    B  # Break
+    U  # Unused
+    V  # Overflow
+    N  # Negative
 
-    BusRef* = ref Bus
+  CPUFlags* = set[CPUFlag]
 
-    CPUFlag* {.size: sizeof(cuchar).} = enum
-        C  # Carry
-        Z  # Zero
-        I  # Interrupt disable
-        D  # Decimal mode
-        B  # Break
-        U  # Unused
-        V  # Overflow
-        N  # Negative
+  CPU* = ref object
+    a*: uint8
+    x*: uint8
+    y*: uint8
+    flags*: CPUFlags
+    pc*: uint16
+    sp*: uint8  # Relative address to 0x100
 
-    CPUFlags* = set[CPUFlag]
+    bus*: Bus
 
-    CPU* = object
-        a*: uint8
-        x*: uint8
-        y*: uint8
-        flags*: CPUFlags
-        pc*: uint16
-        sp*: uint8  # Relative address to 0x100
+    addrAbs*: uint16  # Absolute address fetched
+    addrRel*: uint16  # Relative address fetched
+    fetched*: uint8  # Input value for ALU
+    opcode*: uint8  # Instruction byte
+    cycles*: int  # Cycles remaining
+    clockCount*: int  # Total clock count emulation has been running
 
-        bus*: BusRef
+  Instruction* = object
+    name*: string
+    cycles*: uint8
+    oper*: proc(cpu: CPU): uint8    # operation
+    mode*: proc(cpu: CPU): uint8    # addressing mode
 
-        addrAbs*: uint16  # Absolute address fetched
-        addrRel*: uint16  # Relative address fetched
-        fetched*: uint8  # Input value for ALU
-        opcode*: uint8  # Instruction byte
-        cycles*: int  # Cycles remaining
-        clock_count*: int  # Total clock count emulation has been running
-
-    CPURef* = ref CPU
-
-    Instruction* = object
-        name*: string
-        cycles*: uint8
-        oper*: proc(cpu: CPURef): uint8    # operation
-        mode*: proc(cpu: CPURef): uint8    # addressing mode
-
-    InstructionArray* = array[256, Instruction]
-
+  InstructionArray* = array[256, Instruction]

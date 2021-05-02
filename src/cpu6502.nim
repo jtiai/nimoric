@@ -6,16 +6,16 @@ import strformat
 import fusion/btreetables
 
 using
-    cpu: CPURef
+    cpu: CPU
 
 # Forward declaration of memory access types
-proc amImp(cpu): uint8
+proc amIMP(cpu): uint8
 proc amIMM(cpu): uint8
 proc amZP0(cpu): uint8
 proc amZPX(cpu): uint8
 proc amZPY(cpu): uint8
 proc amREL(cpu): uint8
-proc amABS(cpu): uint8 
+proc amABS(cpu): uint8
 proc amABX(cpu): uint8
 proc amABY(cpu): uint8
 proc amIND(cpu): uint8
@@ -25,6 +25,7 @@ proc amIZY(cpu): uint8
 # Defined at the end of the file
 var lookup: InstructionArray
 
+# Dot access for CPU flags
 template `.`(flags: CPUFlags, key: CPUFlag): bool = 
     flags.contains key
 
@@ -41,23 +42,27 @@ template isZero(v: uint16 | uint8): bool = (v.uint16 == 0x0000'u16)
 template isNeg(v: uint16 | uint8): bool = (v.uint16 == 0x0080'u16)
 
 proc read*(cpu; memaddr: uint16): uint8 =
+    ## Read 8 bit value from bus
     cpu.bus.read(memaddr)
 
 proc read16*(cpu; memaddr: uint16): uint16 =
-    # Read 16 bit value in little endian mode.
+    ## Read 16 bit value in little endian mode from bus
     let lo: uint16 = cpu.read(memaddr).uint16
     let hi: uint16 = cpu.read(memaddr + 1).uint16
     result = (hi shl 8) or lo
 
 proc write*(cpu; memaddr: uint16, val: uint8) =
+    ## Write 8 bit value to bus
     cpu.bus.write(memaddr, val)
 
 proc write16*(cpu; memaddr: uint16, val: uint16) =
-    # Write 16 bit value in little endian mode.
+    ## Write 16 bit value in little endian mode to bus
     cpu.bus.write(memaddr, (val and 0x00FF'u16).uint8)
     cpu.bus.write(memaddr + 1, ((val and 0xFF00'u16) shr 8).uint8)
 
 proc reset*(cpu) =
+    ## Reset CPU to initial state.
+    ## Reset vector address is read from address 0xFFFC
     with cpu:
         addrAbs = 0xFFFC'u16
         pc = cpu.read16(addrAbs)
@@ -77,6 +82,7 @@ proc reset*(cpu) =
 template absSP(cpu): uint16 = 0x0100'u16 + cpu.sp.uint16
 
 proc irq*(cpu) =
+    ## IRQ handler
     with cpu:
         if not flags.I:
             cpu.write(cpu.absSP, ((pc shr 8) and 0x00FF'u16).uint8)
@@ -96,6 +102,7 @@ proc irq*(cpu) =
             cycles = 7
 
 proc nmi*(cpu) =
+    ## NMI Handler
     with cpu:
         cpu.write(cpu.absSP, ((pc shr 8) and 0x00FF'u16).uint8)
         dec sp
@@ -114,18 +121,21 @@ proc nmi*(cpu) =
         cycles = 8
 
 proc fetch(cpu): uint8 =
-    # Fetch one byte from program counter location
+    ## Fetch one byte from program counter location
     with cpu:
-        if lookup[opcode].mode == amImp:
+        if lookup[opcode].mode != amImp:
             fetched = cpu.read(addrAbs)
         result = fetched
 
-proc clock*(cpu; runCycles: uint32) =
-    # Perform one clock cycle of emulation
+proc clock*(cpu) =
+    ## Perform one clock cycle of emulation
     with cpu:
         if cycles == 0:
             opcode = cpu.read(pc)
             flags.U = true
+            inc pc
+
+            cycles = lookup[opcode].cycles.int
 
             let addCycle1 = lookup[opcode].mode(cpu)
             let addCycle2 = lookup[opcode].oper(cpu)
@@ -133,6 +143,13 @@ proc clock*(cpu; runCycles: uint32) =
             cycles += (addCycle1 and addCycle2).int
 
             flags.U = true
+
+        inc clockCount
+        dec cycles
+
+func complete*(cpu;): bool =
+    ## Is one curret op complete?
+    cpu.cycles == 0
 
 proc disassemble*(cpu; start: uint16, stop: uint16): Table[uint16, string] =
     var
@@ -316,7 +333,7 @@ proc amIND(cpu): uint8 =
 
     result = 0'u8
 
-proc amIZX(cpu): uint8 = 
+proc amIZX(cpu): uint8 =
     # Address mode indirect X
     with cpu:
         let t = cpu.read(pc)
@@ -329,7 +346,7 @@ proc amIZX(cpu): uint8 =
 
     result = 0'u8
 
-proc amIZY(cpu): uint8 = 
+proc amIZY(cpu): uint8 =
     # Address mode indirect X
     with cpu:
         let t = cpu.read(pc).uint16
@@ -390,7 +407,7 @@ proc opASL(cpu): uint8 =
         flags.C = (tmp and 0xFF00'u16) > 0'u16
         flags.Z = (tmp and 0x00FF'u16) == 0x0000'u16
         flags.N = (tmp and 0x0080'u16).bool
-        if lookup[opcode].mode == amImp:
+        if lookup[opcode].mode == amIMP:
             a = (tmp and 0x00FF'u16).uint8
         else:
             cpu.write(addrAbs, (tmp and 0x00FF'u16).uint8)
@@ -433,7 +450,7 @@ proc opBEQ(cpu): uint8 =
             pc = addrAbs
     result = 0'u8
 
-proc opBIT(cpu): uint8 = 
+proc opBIT(cpu): uint8 =
     with cpu:
         discard cpu.fetch()
         let tmp: uint16 = (a and fetched).uint16
@@ -455,13 +472,14 @@ proc opBMI(cpu): uint8 =
 
 proc opBNE(cpu): uint8 =
     with cpu:
-        inc cycles
-        addrAbs = pc + addrRel
-
-        if (addrAbs and 0xFF00'u16) != (pc and 0xFF00'u16):
+        if not flags.Z:
             inc cycles
+            addrAbs = pc + addrRel
 
-        pc = addrAbs
+            if (addrAbs and 0xFF00'u16) != (pc and 0xFF00'u16):
+                inc cycles
+
+            pc = addrAbs
     result = 0
 
 proc opBPL(cpu): uint8 =
@@ -693,7 +711,7 @@ proc opPHP(cpu): uint8 =
         dec sp
     result = 0
 
-proc opPLA(cpu): uint8 = 
+proc opPLA(cpu): uint8 =
     with cpu:
         inc sp
         a = cpu.read(0x0100'u16 + sp)
