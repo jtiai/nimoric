@@ -1,6 +1,6 @@
-# Instruction lookup table
-template I(n: string, o: proc(cpu: CPU): uint8, m: proc(cpu: CPU): uint8, c: int): Instruction =
-    Instruction(name: n, oper: o, mode: m, cycles: c)
+    # Instruction lookup table
+    template I(n: string, o: proc(cpu: CPU): uint8, m: proc(cpu: CPU): uint8, c: int): Instruction =
+        Instruction(name: n, oper: o, mode: m, cycles: c)
 
 lookup[0x00] = I( "BRK", opBRK, amIMM, 7 )
 lookup[0x01] = I( "ORA", opORA, amIZX, 6 )

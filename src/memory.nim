@@ -3,7 +3,7 @@ import datatypes
 import device
 
 type
-  Memory = ref object of Device
+  Memory* = ref object of Device
     mem: seq[uint8]
 
 proc newMemory*(s: uint16, e: uint16): Memory =
@@ -17,6 +17,8 @@ method read*(dev: Memory, memAddr: uint16): uint8 =
   dev.mem[memAddr - dev.startAddress]
 
 method write*(dev: Memory, memAddr: uint16, val: uint8) =
+  if memAddr in 0xBB80'u16 .. 0xBFDF'u16:
+    echo fmt"Writing {val:02X} into {memAddr:04X}"
   try:
     dev.mem[memAddr - dev.startAddress] = val
   except IndexDefect:

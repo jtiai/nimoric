@@ -8,8 +8,6 @@ import streams
 import strutils
 import datatypes
 import device
-import memory
-import ula
 
 func newBus*(): Bus =
   result = new Bus
